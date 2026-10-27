@@ -1,352 +1,487 @@
-const TMDB_API_KEY = "aa457b3575a1e7e1a6c26270fb687b5e";
-const TMDB_BASE = "https://api.themoviedb.org/3";
-const IMG_BASE = "https://image.tmdb.org/t/p/w500";
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Quel film ce soir ?</title>
+<meta name="theme-color" content="#101010">
 
-const genres = [
-["Tous", 0],
-["Action", 28],
-["Aventure", 12],
-["Animation", 16],
-["Comédie", 35],
-["Fantastique", 14],
-["Horreur", 27],
-["Mystère", 9648],
-["Romance", 10749],
-["Science-fiction", 878]
-];
+<style>
+:root {
+--bg:#101010;
+--panel:#1b1b1b;
+--gold:#e8bd65;
+--text:#fff;
+--muted:#aaa;
+}
+* { box-sizing:border-box; }
+body {
+margin:0;
+background:var(--bg);
+color:var(--text);
+font-family:Arial,sans-serif;
+}
+header {
+padding:28px 18px;
+text-align:center;
+border-bottom:1px solid #383026;
+background:linear-gradient(135deg,#17130d,#101010);
+}
+h1 { margin:0; color:var(--gold); font-size:clamp(27px,6vw,43px); }
+header p { color:var(--muted); margin-bottom:0; }
+main { max-width:1200px; margin:auto; padding:20px; }
+.controls { display:grid; gap:12px; margin-bottom:20px; }
+input,select,button {
+font:inherit;
+border-radius:10px;
+padding:12px;
+}
+input,select {
+background:#202020;
+color:white;
+border:1px solid #454545;
+width:100%;
+}
+button {
+cursor:pointer;
+border:1px solid #66512c;
+background:#292319;
+color:var(--gold);
+}
+button:hover { background:#3b3020; }
+.actions { display:flex; flex-wrap:wrap; gap:8px; }
+.actions button { flex:1; min-width:125px; }
+.gold {
+background:var(--gold);
+color:#17130d;
+font-weight:bold;
+}
+h2 { font-size:21px; margin:24px 0 6px; }
+#sub,#status { color:var(--muted); font-size:14px; }
+#movies {
+display:grid;
+grid-template-columns:repeat(2,minmax(0,1fr));
+gap:14px;
+margin-top:20px;
+}
+.movie {
+min-width:0;
+background:var(--panel);
+border:1px solid #303030;
+border-radius:12px;
+overflow:hidden;
+position:relative;
+cursor:pointer;
+}
+.poster {
+width:100%;
+aspect-ratio:2/3;
+object-fit:cover;
+display:block;
+background:#292929;
+}
+.movieInfo { padding:10px; }
+.movieTitle { font-weight:bold; line-height:1.3; }
+.meta { color:var(--muted); font-size:12px; margin-top:6px; }
+.score { color:var(--gold); font-size:13px; margin-top:8px; }
+.heart {
+position:absolute;
+right:7px;
+top:7px;
+border:0;
+border-radius:50%;
+padding:8px;
+background:#111d;
+font-size:19px;
+}
+.empty { color:var(--muted); padding:25px 0; grid-column:1/-1; }
+#loadMore { grid-column:1/-1; }
+#modal {
+display:none;
+position:fixed;
+inset:0;
+background:#000d;
+z-index:5;
+overflow:auto;
+padding:18px;
+}
+#modal.open { display:block; }
+.detail {
+max-width:750px;
+margin:25px auto;
+padding:20px;
+background:#1b1b1b;
+border:1px solid #59482b;
+border-radius:16px;
+}
+.detailTop { display:flex; gap:18px; align-items:flex-start; }
+.detailTop img { width:130px; border-radius:10px; }
+#detailTitle { color:var(--gold); margin-top:0; }
+#detailSummary { line-height:1.6; }
+.close { float:right; }
+footer { text-align:center; color:var(--muted); padding:30px 15px; font-size:12px; }
+@media(min-width:600px) {
+.controls { grid-template-columns:2fr 1fr 1fr; }
+#movies { grid-template-columns:repeat(3,minmax(0,1fr)); }
+}
+@media(min-width:900px) {
+#movies { grid-template-columns:repeat(5,minmax(0,1fr)); }
+}
+</style>
+</head>
+
+<body>
+<header>
+<h1>🍿 Quel film ce soir ?</h1>
+<p>Ton prochain film préféré est peut-être ici.</p>
+</header>
+
+<main>
+<div class="controls">
+<input id="search" type="search" placeholder="Rechercher un film...">
+<select id="genre"><option value="">Tous les genres</option></select>
+<select id="era">
+<option value="all">Toutes les époques</option>
+<option value="2020">2020 et après</option>
+<option value="2010">Années 2010</option>
+<option value="2000">Années 2000</option>
+<option value="classic">Avant 2000</option>
+</select>
+</div>
+
+<div class="actions">
+<button id="popular" class="gold">🔥 Films populaires</button>
+<button id="random">🎲 Film au hasard</button>
+<button id="favorites">❤️ Mes favoris</button>
+<button id="home">🏠 Accueil</button>
+</div>
+
+<h2 id="heading">Films populaires</h2>
+<p id="sub">Explore le catalogue de films.</p>
+<p id="status" role="status">Chargement des films…</p>
+<section id="movies" aria-live="polite"></section>
+<button id="loadMore" class="gold" style="display:none;width:100%;margin-top:18px">
+Charger plus de films
+</button>
+</main>
+
+<div id="modal" role="dialog" aria-modal="true" aria-labelledby="detailTitle">
+<div class="detail">
+<button class="close" id="close">✕ Fermer</button>
+<div style="clear:both;height:12px"></div>
+<div class="detailTop">
+<img id="detailPoster" alt="Affiche du film">
+<div>
+<h2 id="detailTitle"></h2>
+<p id="detailMeta" class="meta"></p>
+<p id="detailScore" class="score"></p>
+</div>
+</div>
+<h3>Synopsis</h3>
+<p id="detailSummary"></p>
+<p id="detailGenres" class="meta"></p>
+<button id="detailFav">❤️ Ajouter aux favoris</button>
+</div>
+</div>
+
+<footer>
+Données et affiches fournies par TMDB. Ce site n'est pas affilié à TMDB.
+</footer>
+
+<script>
+/* Remplace uniquement ce texte par ta clé API TMDB v3. */
+const API_KEY = "aa457b3575a1e7e1a6c26270fb687b5e";
+const API = "https://api.themoviedb.org/3";
+const IMG = "https://image.tmdb.org/t/p/w500";
+const NO_POSTER = "https://placehold.co/500x750/202020/e8bd65?text=Pas+d%27affiche";
 
 const $ = id => document.getElementById(id);
-
 let films = [];
-let genre = "Tous";
-let era = "all";
-let current = null;
 let page = 1;
 let totalPages = 1;
-let loading = false;
-let searchTimer;
+let genre = "";
+let era = "all";
+let query = "";
+let mode = "popular";
+let current = null;
+let requestNumber = 0;
+let fav = new Set(JSON.parse(localStorage.getItem("filmFavs") || "[]"));
 
-let fav = new Set(
-JSON.parse(localStorage.getItem("filmFavs") || "[]")
-);
-
-const genreNames = Object.fromEntries(
-genres.map(([name, id]) => [id, name])
-);
-
-function poster(m) {
-return m.posterPath
-? IMG_BASE + m.posterPath
-: "https://placehold.co/500x750/17120b/f4cb77?text=Affiche+indisponible";
+function saveFav() {
+localStorage.setItem("filmFavs", JSON.stringify([...fav]));
 }
 
-function adaptFilm(m) {
-return {
-id: m.id,
-t: m.title || m.original_title || "Film sans titre",
-y: m.release_date
-? Number(m.release_date.slice(0, 4))
-: 0,
-g: (m.genre_ids || [])
-.map(id => genreNames[id])
-.filter(Boolean)
-.join(", ") || "Autre",
-n: Math.round((m.vote_average || 0) * 10) / 10,
-d: "Chargement...",
-r: "Chargement...",
-p: m.poster_path,
-posterPath: m.poster_path,
-s: m.overview || "Résumé indisponible.",
-genreIds: m.genre_ids || []
-};
+async function api(path, params = {}) {
+const url = new URL(API + path);
+url.searchParams.set("api_key", API_KEY);
+url.searchParams.set("language", "fr-FR");
+Object.entries(params).forEach(([k,v]) => {
+if (v !== "" && v !== null && v !== undefined) {
+url.searchParams.set(k, v);
 }
-
-function matches(m) {
-const q = $("search").value.toLowerCase().trim();
-
-return (genre === "Tous" ||
-m.genreIds.includes(
-genres.find(g => g[0] === genre)?.[1]
-)) &&
-(era === "all" ||
-(era === "recent" ? m.y >= 2020 : m.y < 2020)) &&
-(!q || (m.t + " " + m.s).toLowerCase().includes(q));
-}
-
-async function chargerFilms(reset = true) {
-if (loading) return;
-loading = true;
-
-if (reset) {
-page = 1;
-films = [];
-$("movies").innerHTML =
-'<div class="empty">Chargement des films... 🍿</div>';
-}
-
-const q = $("search").value.trim();
-const selectedGenre = genres.find(g => g[0] === genre)?.[1];
-
-const params = new URLSearchParams({
-api_key: TMDB_API_KEY,
-language: "fr-FR",
-page: String(page),
-include_adult: "false"
 });
-
-let endpoint;
-
-if (q) {
-endpoint = "/search/movie";
-params.set("query", q);
-} else {
-endpoint = "/discover/movie";
-params.set("sort_by", "popularity.desc");
-params.set("vote_count.gte", "10");
-
-if (selectedGenre) {
-params.set("with_genres", String(selectedGenre));
+const response = await fetch(url);
+if (!response.ok) throw new Error("Erreur TMDB : " + response.status);
+return response.json();
 }
 
-if (era === "recent") {
-params.set("primary_release_date.gte", "2020-01-01");
-} else if (era === "old") {
-params.set("primary_release_date.lte", "2019-12-31");
-}
-}
-
-try {
-const response = await fetch(
-`${TMDB_BASE}${endpoint}?${params}`
-);
-
-if (!response.ok) {
-throw new Error("Erreur API : " + response.status);
+async function loadGenres() {
+const data = await api("/genre/movie/list");
+$("genre").innerHTML =
+'<option value="">Tous les genres</option>' +
+data.genres.map(g =>
+`<option value="${g.id}">${escapeHTML(g.name)}</option>`
+).join("");
 }
 
-const data = await response.json();
-
-totalPages = Math.min(data.total_pages || 1, 500);
-
-const nouveaux = (data.results || []).map(adaptFilm);
-
-films = reset
-? nouveaux
-: [...films, ...nouveaux];
-
-render();
-} catch (error) {
-console.error(error);
-$("heading").textContent = "Oups, impossible de charger les films";
-$("sub").textContent =
-"Vérifie ta clé API et ta connexion, puis réessaie.";
-$("movies").innerHTML =
-'<div class="empty">Impossible de récupérer les films. 🍿</div>';
-} finally {
-loading = false;
+function escapeHTML(value = "") {
+return String(value).replace(/[&<>"']/g, c => ({
+"&":"&amp;", "<":"&lt;", ">":"&gt;",
+'"':"&quot;", "'":"&#39;"
+})[c]);
 }
+
+function filtered(list) {
+return list.filter(m => {
+const year = Number((m.release_date || "").slice(0,4));
+if (genre && !(m.genre_ids || []).includes(Number(genre))) return false;
+if (era === "2020" && year < 2020) return false;
+if (era === "2010" && (year < 2010 || year > 2019)) return false;
+if (era === "2000" && (year < 2000 || year > 2009)) return false;
+if (era === "classic" && (!year || year >= 2000)) return false;
+return true;
+});
 }
 
 function card(m) {
-const safeTitle = String(m.t).replace(/&/g, "&amp;")
-.replace(/</g, "&lt;").replace(/>/g, "&gt;")
-.replace(/"/g, "&quot;");
+const title = escapeHTML(m.title || "Film sans titre");
+const year = (m.release_date || "").slice(0,4) || "Date inconnue";
+const poster = m.poster_path ? IMG + m.poster_path : NO_POSTER;
+const score = Number(m.vote_average || 0).toFixed(1);
+const isFav = fav.has(m.id);
 
-return `<article class="movie">
-<div class="poster">
-<img src="${poster(m)}" alt="Affiche de ${safeTitle}"
-onerror="this.style.display='none'">
-<span class="score">★ ${m.n}/10</span>
-<button class="heart" data-fav="${m.id}">
-${fav.has(m.id) ? "♥" : "♡"}
-</button>
-</div>
-<div class="info">
-<h3>${safeTitle}</h3>
-<div class="meta">${m.y || "Date inconnue"} · ${m.g}</div>
-<p class="summary">${m.s}</p>
-<button data-details="${m.id}">Voir la fiche →</button>
+return `<article class="movie" data-details="${m.id}" tabindex="0">
+<button class="heart" data-fav="${m.id}" aria-label="Favori">${isFav ? "❤️" : "🤍"}</button>
+<img class="poster" src="${poster}" alt="Affiche de ${title}"
+loading="lazy" onerror="this.src='${NO_POSTER}'">
+<div class="movieInfo">
+<div class="movieTitle">${title}</div>
+<div class="meta">${year}</div>
+<div class="score">★ ${score}/10</div>
 </div>
 </article>`;
 }
 
 function render() {
-const list = films.filter(matches);
+const list = mode === "favorites"
+? films.filter(m => fav.has(m.id))
+: filtered(films);
 
 $("movies").innerHTML = list.length
 ? list.map(card).join("")
 : '<div class="empty">Aucun film trouvé. Essaie un autre choix 🍿</div>';
 
-if (page < totalPages && list.length) {
-$("movies").insertAdjacentHTML(
-"beforeend",
-'<button id="loadMore" class="gold">Charger plus de films</button>'
-);
+$("heading").textContent = mode === "favorites"
+? "Mes favoris"
+: query ? "Résultats de recherche" : "Films populaires";
 
-$("loadMore").onclick = () => {
-page++;
-chargerFilms(false);
-};
+$("sub").textContent = "Les résultats proviennent de TMDB.";
+$("loadMore").style.display =
+mode !== "favorites" && page < totalPages ? "block" : "none";
 }
 
-$("heading").textContent =
-list.length + " films pour toi";
-
-$("sub").textContent =
-"Les résultats proviennent de TMDB. Sélectionne un film pour sa fiche.";
-
-$("count").textContent = fav.size;
+async function chargerFilms(reset = true) {
+if (API_KEY === "COLLE_TA_CLE_API_V3_ICI") {
+$("status").textContent = "Ajoute d'abord ta clé API TMDB dans le code.";
+return;
 }
 
-$("movies").addEventListener("click", e => {
-const favButton = e.target.closest("[data-fav]");
-const detailsButton = e.target.closest("[data-details]");
-
-if (favButton) {
-const id = Number(favButton.dataset.fav);
-toggleFav(id);
+if (reset) {
+page = 1;
+films = [];
 }
 
-if (detailsButton) {
-details(Number(detailsButton.dataset.details));
-}
+const myRequest = ++requestNumber;
+$("status").textContent = "Chargement des films…";
+$("loadMore").disabled = true;
+
+try {
+let data;
+if (query.trim()) {
+data = await api("/search/movie", {
+query: query.trim(), page, include_adult: false
 });
+} else {
+data = await api("/discover/movie", {
+page,
+sort_by: "popularity.desc",
+include_adult: false,
+with_genres: genre || undefined,
+"primary_release_date.gte": era === "2020" ? "2020-01-01"
+: era === "2010" ? "2010-01-01"
+: era === "2000" ? "2000-01-01"
+: undefined,
+"primary_release_date.lte": era === "classic" ? "1999-12-31"
+: era === "2000" ? "2009-12-31"
+: era === "2010" ? "2019-12-31"
+: undefined
+});
+}
+
+if (myRequest !== requestNumber) return;
+totalPages = Math.min(data.total_pages || 1, 500);
+const incoming = data.results || [];
+films = reset ? incoming : films.concat(incoming);
+$("status").textContent = `${data.total_results || 0} résultats trouvés.`;
+render();
+} catch (error) {
+$("status").textContent =
+"Impossible de charger les films. Vérifie ta clé API et réessaie.";
+console.error(error);
+} finally {
+$("loadMore").disabled = false;
+}
+}
 
 function toggleFav(id) {
-if (fav.has(id)) {
-fav.delete(id);
-} else {
-fav.add(id);
-}
-
-localStorage.setItem("filmFavs", JSON.stringify([...fav]));
+if (fav.has(id)) fav.delete(id);
+else fav.add(id);
+saveFav();
 render();
-
-if ($("favorites").style.display !== "none") {
-showFav();
-}
 }
 
 async function details(id) {
-current = films.find(m => m.id === id);
-if (!current) return;
-
-$("detailTitle").textContent = current.t;
-$("detailPoster").src = poster(current);
-$("detailMeta").textContent =
-`${current.y} · ${current.g} · ★ ${current.n}/10`;
-$("detailSummary").textContent = current.s;
-$("detailFacts").textContent = "Chargement des détails...";
-$("detailFav").textContent =
-fav.has(id) ? "♥ Retirer des favoris" : "♡ Ajouter aux favoris";
-
-$("detailFav").onclick = () => {
-toggleFav(id);
-$("detailFav").textContent =
-fav.has(id) ? "♥ Retirer des favoris" : "♡ Ajouter aux favoris";
-};
-
-$("modal").classList.add("show");
-
 try {
-const params = new URLSearchParams({
-api_key: TMDB_API_KEY,
-language: "fr-FR",
-append_to_response: "credits"
-});
-
-const response = await fetch(
-`${TMDB_BASE}/movie/${id}?${params}`
-);
-
-if (!response.ok) throw new Error("Détails indisponibles");
-
-const data = await response.json();
-const director = data.credits?.crew?.find(
-person => person.job === "Director"
-);
-
-current.d = data.runtime
-? `${Math.floor(data.runtime / 60)} h ${String(data.runtime % 60).padStart(2, "0")}`
-: "Inconnue";
-
-current.r = director?.name || "Non renseigné";
-
-$("detailFacts").textContent =
-`Durée : ${current.d} | Réalisateur : ${current.r}`;
+current = await api("/movie/" + id);
+$("detailTitle").textContent = current.title || "Film";
+$("detailPoster").src = current.poster_path
+? IMG + current.poster_path : NO_POSTER;
+$("detailMeta").textContent =
+`${(current.release_date || "").slice(0,4) || "Date inconnue"} · ` +
+`${current.runtime ? current.runtime + " min" : "Durée inconnue"}`;
+$("detailScore").textContent =
+`★ ${Number(current.vote_average || 0).toFixed(1)}/10`;
+$("detailSummary").textContent =
+current.overview || "Aucun synopsis disponible en français.";
+$("detailGenres").textContent =
+(current.genres || []).map(g => g.name).join(" · ");
+$("detailFav").textContent = fav.has(id)
+? "❤️ Retirer des favoris" : "🤍 Ajouter aux favoris";
+$("modal").classList.add("open");
 } catch (error) {
-$("detailFacts").textContent =
-"Les détails supplémentaires sont indisponibles.";
+$("status").textContent = "Impossible de charger la fiche du film.";
 }
 }
 
 function closeFilm() {
-$("modal").classList.remove("show");
+$("modal").classList.remove("open");
 }
 
-function randomFilm() {
-const list = films.filter(matches);
-if (!list.length) return;
-
-details(list[Math.floor(Math.random() * list.length)].id);
+$("movies").addEventListener("click", e => {
+const favButton = e.target.closest("[data-fav]");
+if (favButton) {
+e.stopPropagation();
+toggleFav(Number(favButton.dataset.fav));
+return;
 }
-
-function showFav() {
-$("home").style.display = "none";
-$("favorites").style.display = "block";
-
-const list = films.filter(m => fav.has(m.id));
-
-$("favMovies").innerHTML = list.length
-? list.map(card).join("")
-: '<div class="empty">Tes favoris apparaîtront ici. Clique sur ♡ sur un film !</div>';
-
-$("count").textContent = fav.size;
-window.scrollTo(0, 0);
-}
-
-function showHome() {
-$("favorites").style.display = "none";
-$("home").style.display = "block";
-window.scrollTo(0, 0);
-render();
-}
-
-$("genres").innerHTML = genres.map(([name]) =>
-`<button class="chip ${name === genre ? "active" : ""}"
-data-g="${name}">${name}</button>`
-).join("");
-
-$("genres").onclick = e => {
-const b = e.target.closest("[data-g]");
-if (!b) return;
-
-genre = b.dataset.g;
-
-document.querySelectorAll("#genres [data-g]").forEach(x =>
-x.classList.toggle("active", x === b)
-);
-
-chargerFilms();
-};
-
-$("eras").onclick = e => {
-const b = e.target.closest("[data-era]");
-if (!b) return;
-
-era = b.dataset.era;
-
-document.querySelectorAll("#eras [data-era]").forEach(x =>
-x.classList.toggle("active", x === b)
-);
-
-chargerFilms();
-};
-
-$("search").addEventListener("input", () => {
-clearTimeout(searchTimer);
-searchTimer = setTimeout(() => chargerFilms(), 400);
+const movie = e.target.closest("[data-details]");
+if (movie) details(Number(movie.dataset.details));
 });
 
-chargerFilms();
+$("movies").addEventListener("keydown", e => {
+if ((e.key === "Enter" || e.key === " ") &&
+e.target.matches("[data-details]")) {
+e.preventDefault();
+details(Number(e.target.dataset.details));
+}
+});
 
+$("search").addEventListener("input", e => {
+query = e.target.value;
+mode = "popular";
+chargerFilms(true);
+});
+
+$("genre").addEventListener("change", e => {
+genre = e.target.value;
+mode = "popular";
+chargerFilms(true);
+});
+
+$("era").addEventListener("change", e => {
+era = e.target.value;
+mode = "popular";
+chargerFilms(true);
+});
+
+$("loadMore").onclick = () => {
+if (page < totalPages) {
+page++;
+chargerFilms(false);
+}
+};
+
+$("popular").onclick = () => {
+query = "";
+$("search").value = "";
+mode = "popular";
+chargerFilms(true);
+};
+
+$("home").onclick = () => {
+query = "";
+genre = "";
+era = "all";
+$("search").value = "";
+$("genre").value = "";
+$("era").value = "all";
+mode = "popular";
+chargerFilms(true);
+};
+
+$("favorites").onclick = () => {
+mode = "favorites";
+render();
+$("status").textContent = `${fav.size} film(s) dans tes favoris.`;
+};
+
+$("random").onclick = async () => {
+try {
+const data = await api("/movie/popular", {page:1});
+if (data.results && data.results.length) {
+const m = data.results[Math.floor(Math.random() * data.results.length)];
+details(m.id);
+}
+} catch (error) {
+$("status").textContent = "Impossible de choisir un film au hasard.";
+}
+};
+
+$("close").onclick = closeFilm;
+$("modal").addEventListener("click", e => {
+if (e.target === $("modal")) closeFilm();
+});
+document.addEventListener("keydown", e => {
+if (e.key === "Escape") closeFilm();
+});
+$("detailFav").onclick = () => {
+if (current) {
+toggleFav(current.id);
+$("detailFav").textContent = fav.has(current.id)
+? "❤️ Retirer des favoris" : "🤍 Ajouter aux favoris";
+}
+};
+
+async function start() {
+try {
+await loadGenres();
+await chargerFilms();
+} catch (error) {
+$("status").textContent =
+"TMDB n'a pas répondu. Vérifie ta clé API et réessaie.";
+}
+}
+start();
+</script>
+</body>
+</html>
