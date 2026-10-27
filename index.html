@@ -205,6 +205,23 @@ window.scrollTo(0,0);render();
 }
 render();
 </script>
+  <script>
+
+const TMDB_API_KEY = "aa457b3575a1e7e1a6c26270fb687b5e";
+
+async function rechercherFilms(recherche) {
+
+  const url = `https://api.themoviedb.org/3/search/movie?api_key=${TMDB_API_KEY}&query=${encodeURIComponent(recherche)}&language=fr-FR`;
+
+  const reponse = await fetch(url);
+
+  const donnees = await reponse.json();
+
+  console.log(donnees.results);
+
+}
+
+</script>
 </body>
 </html>
 
